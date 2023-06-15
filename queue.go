@@ -8,12 +8,20 @@ import (
 type Queue[T any] struct {
 	head *Node[T]
 	tail *Node[T]
-	size int
+	size int64
 }
 
 type Node[T any] struct {
 	next  *Node[T]
 	value T
+}
+
+func New[T any]() *Queue[T] {
+	node := &Node[T]{}
+	return &Queue[T]{
+		head: node,
+		tail: node,
+	}
 }
 
 func (q *Queue[T]) Push(v T) {
@@ -47,9 +55,10 @@ func (q *Queue[T]) Push(v T) {
 				unsafe.Pointer(tail), atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&tail.next))))
 		}
 	}
+	atomic.AddInt64(&q.size, 1)
 }
 
-func (q *Queue[T]) Pop() T {
+func (q *Queue[T]) Pop() (v T) {
 	ok := false
 	for !ok {
 		head := (*Node[T])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&q.head))))
@@ -58,7 +67,6 @@ func (q *Queue[T]) Pop() T {
 		if head == (*Node[T])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&q.head)))) {
 			if head == tail { // 队列是空的 不能弹出
 				panic("Empty Queue")
-				return nil
 			}
 			atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&q.tail)), // 同样的思路, 没被更新就进行更新
 				unsafe.Pointer(tail), unsafe.Pointer(next))
@@ -67,8 +75,10 @@ func (q *Queue[T]) Pop() T {
 			ok = atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&q.head)),
 				unsafe.Pointer(head), unsafe.Pointer(next))
 			if ok {
-				return next.value
+				v = next.value // 由于使用了一个空白节点 head上的value是不会被读取的 相当于删了(=_=)
 			}
 		}
 	}
+	atomic.AddInt64(&q.size, -1)
+	return
 }
